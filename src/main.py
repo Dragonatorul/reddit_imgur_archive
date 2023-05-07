@@ -1,5 +1,6 @@
 import reddit
 import imgur
+import os
 
 from dotenv import load_dotenv
 
