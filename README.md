@@ -28,3 +28,28 @@ The links can then be downloaded with the script itself, or compiled in '.crawlj
   * You can use the docker image https://hub.docker.com/r/jlesage/jdownloader-2/ to run JDownloader in a container.
 
 See [requirements.txt](./requirements.txt) for a list of required Python packages.
+
+ ## Usage
+
+ This is a collection of functions that can be used to collect Imgur links from archived Reddit submissions. It is not intended to be run as a standalone application.
+
+ Check the documentation for each function for more information.
+
+ One way to use this is to create a new Python file and import the functions you want to use. 
+
+ See [main.py](./src/main.py) for an example of how to use the functions.
+
+Then run the file from the command line:
+
+```bash
+python main.py
+```
+
+### Workflow
+
+My workflow while developing this script was:
+
+1. Extract a list of subreddits from my multireddits using the function reddit.get_multireddit_subreddits()
+2. Use the function reddit.archive_subreddit to archive the submissions from each subreddit
+3. Use the function imgur.write_imgur_urls_from_subreddit_to_file to write the Imgur links to a file
+4. Use the function imgur.create_crawljob_file_from_imgur_urls to create a crawljob file for JDownloader2
