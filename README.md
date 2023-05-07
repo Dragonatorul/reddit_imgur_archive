@@ -31,6 +31,7 @@ See [requirements.txt](./requirements.txt) for a list of required Python package
 
  ## Usage
 
+
  This is a collection of functions that can be used to collect Imgur links from archived Reddit submissions. It is not intended to be run as a standalone application.
 
  Check the documentation for each function for more information.
@@ -45,6 +46,13 @@ Then run the file from the command line:
 python main.py
 ```
 
+**NOTE:** A lot of the paths hardcoded in this repo presume that it will be run in a devcontainer with the following volumes mounted:
+ - /app - This is where the code is stored
+ - /data - This is where the crawljob files will be stored and any other data that needs to be persisted
+ - /folderwatch - This is where JDownloader will watch for crawljob files
+
+The devcontainer configuration is not yet included (I am still working on making a generic one).
+ 
 ### Workflow
 
 My workflow while developing this script was:
