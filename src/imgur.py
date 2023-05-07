@@ -43,6 +43,13 @@ load_dotenv()
 
 
 def get_imgur_url(submission_json, filter_moderated=True):
+    """
+    Get the imgur url from a submission json file
+
+    :param submission_json: The submission json file
+    :param filter_moderated: Whether to filter out moderated submissions
+    :return: The imgur url
+    """
     with open(submission_json) as json_file:
         submission = json.load(json_file)
         if filter_moderated:
@@ -158,6 +165,12 @@ def transform_imgur_url_for_download(imgur_url):
 
 
 def download_imgur_url(file_with_imgur_urls, output_folder):
+    """
+    Download a list of imgur urls from a file
+
+    :param file_with_imgur_urls: The file containing the imgur urls
+    :param output_folder: The folder to save the downloaded files to
+    """
     # Create the output folder if it does not exist
     if not os.path.exists(output_folder):
         os.makedirs(output_folder)
@@ -199,7 +212,8 @@ def download_imgur_url(file_with_imgur_urls, output_folder):
                        original_url=None, 
                        write_failed_to_path=None,
                        only_validate_url=False,
-                       validated_urls_path=None
+                       validated_urls_path=None,
+                       sleep=1
                        ):
         """
         Download a file from a url
@@ -250,7 +264,7 @@ def download_imgur_url(file_with_imgur_urls, output_folder):
             "TE": "trailers"
         }
         MAX_RECURSIVE_STEP = 10
-        SLEEP_TIME = 1
+        SLEEP_TIME = sleep if sleep is not None else 1
         if recursive_step >= MAX_RECURSIVE_STEP - 1:
             if write_failed_to_path is not None:
                 # Add the original_url and file_path to a file with a list of imgur urls and filenames failed downloads
@@ -335,6 +349,12 @@ def download_imgur_url(file_with_imgur_urls, output_folder):
 
 
 def get_urls_from_folders(folder_path):
+    """
+    Get a list of all the imgur urls from the subfolders in the folder_path
+
+    :param folder_path: The path to the folder containing the subfolders
+    :return: A list of all the imgur urls from the subfolders in the folder_path
+    """
     # Get a list of all the subfolders in the folder_path
     subfolders = [f.path for f in os.scandir(folder_path) if f.is_dir()]
     # write the imgur urls from each subfolder to a file
@@ -373,6 +393,15 @@ def create_wastebin_post(text,
                          extension=None,
                          expires=None,
                          burn_after_reading=False):
+    """
+    Create a post on wastebin
+
+    :param text: The text to post on wastebin
+    :param extension: The file extension of the text
+    :param expires: The number of seconds from now the post will expire
+    :param burn_after_reading: If the post should be deleted after reading
+    :return: The url to the post
+    """
     # Create the post data
     post_data = {
         'text': text,
@@ -417,6 +446,17 @@ def create_crawljob_file_from_imgur_urls(imgur_urls,
                                          output_folder='./data/crawljobs',
                                          download_folder=None,
                                          recreate_file=False):
+    """
+    Create a jDownloader2 .crawljob file from a list of imgur urls
+
+    :param imgur_urls: A list of imgur urls
+    :param crawljob_name: The name of the .crawljob file
+    :param limit: The maximum number of imgur urls to post to wastebin
+    :param output_folder: The folder to save the .crawljob file
+    :param download_folder: The download folder to be specified in the .crawljob file and used by jDownloader2
+    :param recreate_file: If the .crawljob file should be recreated if it already exists
+    :return: None
+    """
     # Create the output folder if it doesn't exist
     if not os.path.exists(output_folder):
         os.makedirs(output_folder)
@@ -456,6 +496,14 @@ def create_crawljob_file_from_imgur_urls(imgur_urls,
 def create_crawlfile_from_text_file(file_name,
                                     output_folder='./data/crawljobs',
                                     recreate_file=False):
+    """
+    Create a jDownloader2 .crawljob file from a text file containing imgur urls
+
+    :param file_name: The name of the text file containing imgur urls
+    :param output_folder: The folder to save the .crawljob file
+    :param recreate_file: If the .crawljob file should be recreated if it already exists
+    :return: None
+    """
     # Read the file with combined file name and extension 
     with open(file_name, 'r') as f:
         # Read each line from the file and create a list of imgur urls
@@ -472,6 +520,8 @@ def create_crawlfile_from_text_file(file_name,
 
 
 def execute_from_command_line():
+    ### Use this function to define what you want to do when you run this particular file 
+    ### from the command line. This is not good practice, but I don't have time to make it better.
     url_source_folder = "/data/subreddit_links"
     for file_name in os.listdir(url_source_folder):
         create_crawlfile_from_text_file(os.path.join(url_source_folder, file_name),

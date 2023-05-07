@@ -72,6 +72,32 @@ def test_reddit_api():
 
 # Function to get the subreddits of all the user's multireddits and write them to a text file
 def get_multireddit_subreddits():
+    """
+    This function gets the subreddits of all the user's multireddits and writes them to a text file.
+    
+    The text file is named '{multireddit}_subreddits.txt' and is stored in the 'Multireddits' directory.
+
+    The function prompts the user for their Reddit password in a secure console prompt.
+
+    The function uses the following environment variables:
+    - CLIENT_ID
+    - CLIENT_SECRET
+    - USER_AGENT
+    - USERNAME
+
+    The function uses the following libraries:
+    - praw
+    - getpass
+    - os
+
+    The function creates the following directories:
+    - Multireddits
+
+    The function creates the following files:
+    - {multireddit}_subreddits.txt
+
+    :return: None
+    """
     # Get the user's password in a secure console prompt
     password = getpass.getpass('Password: ')
     # Initialize the Reddit API
@@ -103,6 +129,13 @@ def get_multireddit_subreddits():
 # Function to parse the multireddit subreddits and consolidate them into a single file
 # The function checks for duplicate subreddits and only stores a unique list of subreddits
 def parse_multireddit_subreddits():
+    """
+    This function parses the multireddit subreddits and consolidates them into a single file.
+
+    The function checks for duplicate subreddits and only stores a unique list of subreddits.
+
+    :return: None
+    """
     # Create a set to store the subreddits
     subreddits = set()
     # Get the multireddits
@@ -136,6 +169,16 @@ def parse_multireddit_subreddits():
 # The function will get all the submissions from the subreddit in separate requests for each month
 # The function will then write each submission to a text file with the path format 'subreddit/YYYY-MM/submission_id.json'
 def archive_subreddit(subreddit):
+    """
+    This function archives a given subreddit submissions from the Pushshift API.
+
+    The function will get all the submissions from the subreddit and separate them into folders for each month and one file for each submission.
+
+    The function will then write each submission to a text file with the path format  './Archive/subreddit/YYYY/MM/YYYY-MM-DD_submission_id.json'
+
+    :param subreddit: The subreddit to archive
+    :return: None
+    """
     # Skip if the subreddit folder already exists
     if os.path.exists(f'./Archive/{subreddit}'):
         log(f'r/{subreddit} already exists.')
@@ -151,7 +194,7 @@ def archive_subreddit(subreddit):
     submissions = api.search_submissions(subreddit=subreddit,
                                          mem_safe=True,
                                          safe_exit=True)
-    # Write the submissions to a json file with the path format 'subreddit/YYYY-MM/YYYY-MM-DD_submission_id.json'
+    # Write the submissions to a json file with the path format './Archive/subreddit/YYYY/MM/YYYY-MM-DD_submission_id.json'
     for submission in submissions:
         # Get the date of the submission
         submission_date = datetime.datetime.fromtimestamp(submission['created_utc'])
@@ -176,6 +219,12 @@ def archive_subreddit(subreddit):
 
 
 def get_imgur_links(subreddit):
+    """
+    This function gets all the imgur links from a given subreddit.
+
+    :param subreddit: The subreddit to get the imgur links from
+    :return: None
+    """
     # Initialize the API
     api = PushshiftAPI(file_checkpoint=10)
     # Get the submissions from the subreddit
