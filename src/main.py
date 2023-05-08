@@ -1,5 +1,6 @@
 import reddit
 import imgur
+import download
 import os
 
 from dotenv import load_dotenv
@@ -8,7 +9,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 
-def run_main():
+def create_crawl_file():
     if "TEST_FILENAME" in os.environ:
         test_filename = os.environ["TEST_FILENAME"]
     else:
@@ -21,6 +22,36 @@ def run_main():
         output_folder="/data/imgur_links",
         recreate_file=True
     )
+    pass
+
+
+def test_pyload():
+    response = download.test_connection()
+    print(response)
+    pass
+
+
+def add_pyload_package_from_file():
+    if "TEST_FILE_PATH" in os.environ:
+        test_file_path = os.environ["TEST_FILE_PATH"]
+    else:
+        print("TEST_FILE_PATH environment variable not set")
+        return None
+    # get the package name from the file name
+    package_name = os.path.basename(test_file_path).split(".")[0]
+
+    # get the links from the file
+    with open(test_file_path, "r") as f:
+        links = f.readlines()
+    links = [link.strip() for link in links]
+
+    # add the package
+    response = download.add_package(package_name, links)
+
+
+def run_main():
+    # test_pyload()
+    add_pyload_package_from_file()
     pass
 
 
