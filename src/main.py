@@ -49,9 +49,22 @@ def add_pyload_package_from_file():
     response = download.add_package(package_name, links)
 
 
+def validate_imgur_links():
+    if "TEST_FILE_PATH" in os.environ:
+        test_file_path = os.environ["TEST_FILE_PATH"]
+    else:
+        print("TEST_FILE_PATH environment variable not set")
+        return None
+    # get the package name from the file name
+    new_file_name = f"{os.path.basename(test_file_path).split('.')[0]}_validated.txt"
+
+    imgur.validate_imgur_urls(test_file_path, "./data/validated_links")
+
+
 def run_main():
     # test_pyload()
-    add_pyload_package_from_file()
+    # add_pyload_package_from_file()
+    validate_imgur_links()
     pass
 
 

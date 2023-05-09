@@ -2,6 +2,7 @@ import os
 import json
 import urllib.request
 import zipfile
+from bs4 import BeautifulSoup
 import requests
 
 from dotenv import load_dotenv
@@ -164,7 +165,7 @@ def transform_imgur_url_for_download(imgur_url):
     return return_val
 
 
-def download_imgur_url(file_with_imgur_urls, output_folder):
+def download_imgur_url(file_with_imgur_urls, output_folder, only_validate_urls=False):
     """
     Download a list of imgur urls from a file
 
@@ -341,12 +342,34 @@ def download_imgur_url(file_with_imgur_urls, output_folder):
                     with open(validated_urls_path, 'a') as f:
                         f.write(f"{original_url}\n")
 
+    if only_validate_urls:
+        # Define validated_urls_path from file_with_imgur_urls
+        if file_with_imgur_urls.endswith('.txt'):
+            validated_urls_path = file_with_imgur_urls.replace('.txt', '_validated.txt')
+        else:
+            print(f"ERROR: {file_with_imgur_urls} is not a .txt file")
     # Download the imgur urls and show a progress bar using tqdm
     for i in tqdm_sync(range(len(imgur_urls_and_filenames)), desc='Downloading', unit='file'):
         imgur_url, filename_with_path = imgur_urls_and_filenames[i]
-        # Download the imgur url and show a progress bar using tqdm.asyncio
-        asyncio.run(download(imgur_url, filename_with_path))
+        # Download the imgur url and show a progress bar using tqdm.asyncio or only validate the urls
+        asyncio.run(
+            download(imgur_url, 
+                     filename_with_path, 
+                     0, 
+                     only_validate_url=only_validate_urls, 
+                     validated_urls_path=validated_urls_path))
 
+
+def validate_imgur_urls(file_with_imgur_urls, output_folder):
+    """
+    Validate the imgur urls from the file_with_imgur_urls
+
+    :param file_with_imgur_urls: The file containing the imgur urls
+    :return: None
+    """
+    download_imgur_url( file_with_imgur_urls,
+                        output_folder=output_folder,
+                        only_validate_urls=True)
 
 def get_urls_from_folders(folder_path):
     """
@@ -466,7 +489,7 @@ def create_crawljob_file_from_imgur_urls(imgur_urls,
     wastebin_urls = []
     for i in range(0, len(imgur_urls), limit):
         wastebin_urls.append(create_wastebin_post('\n'.join(imgur_urls[i:i + limit]),
-                                                  expires=86400))
+                                                  expires=604800))
     # Create the .crawljob file
     crawljob_file_path = os.path.join(output_folder, f'{crawljob_name}.crawljob')
     # Check if the file exists and if the file should be recreated
@@ -517,6 +540,69 @@ def create_crawlfile_from_text_file(file_name,
                                          crawljob_name=crawljob_name,
                                          output_folder=output_folder,
                                          recreate_file=recreate_file)
+
+
+def validate_imgur_url(imgur_url):
+    url_components = urlparse(imgur_url)
+    if url_components.hostname.lower() == 'imgur.com':
+        if '/gallery/' in url_components.path:
+            return None
+        r = requests.get(imgur_url + '/zip', allow_redirects=False)
+        if r.status_code == 302:
+            redirect_url = r.headers['Location']
+            # If the redirect url contains /download/ follow the redirect but don't download the file
+            if '/download/' in redirect_url:
+                # Get the headers only
+                r = requests.get(redirect_url, stream=True, allow_redirects=False)
+                if r.status_code == 403:
+                    r.close()
+                    pass
+                else:
+                    return f"{imgur_url}/zip" if '/zip' not in imgur_url else imgur_url
+                
+        # Use beautifulsoup to parse the html
+        r = requests.get(imgur_url)
+        soup = BeautifulSoup(r.text, 'html.parser')
+        # Find the image element in the html by finding the img element with class .image-placeholder
+        image_element = soup.find('img', class_='image-placeholder')
+        if image_element:
+            imgur_url = image_element['src']
+            url_components = urlparse(imgur_url)
+        r.close()
+    # Get extension from the url
+    extension = url_components.path.split('.')[-1]
+    if url_components.hostname.lower() == 'i.imgur.com' and extension.lower() in ['jpg', 'jpeg', 'png', 'gif', 'gifv', 'mp4', 'webm', 'webp']:
+        # Switch case based on the extension
+        match extension.lower():
+            case 'jpg' | 'jpeg' | 'webp':
+                return f"https://i.imgur.com/{url_components.path.split('/')[-1]}.png"
+            case 'gif' | 'gifv' | 'webm':
+                return f"https://i.imgur.com/{url_components.path.split('/')[-1]}.mp4"
+    # Check if /gallery/ is in the url
+    elif '/gallery/' in url_components.path:
+        return None
+    # Check if /a/ is in the url
+    elif '/a/' in url_components.path:
+        # Issue a request to download the imgur album page with /zip appended to the url, but don't follow redirects
+        # Get the redirect url from the response
+        r = requests.get(imgur_url + '/zip', allow_redirects=False)
+        if r.status_code == 302:
+            redirect_url = r.headers['Location']
+            # If the redirect url contains /download/ follow the redirect but don't download the file
+            if '/download/' in redirect_url:
+                # Get the headers only
+                r = requests.get(redirect_url, stream=True, allow_redirects=False)
+                if r.status_code == 403:
+                    # There is no zip to download, so return a link for png based on the original url
+                    return f"https://i.imgur.com/{url_components.path.split('/')[-1]}.png"
+    elif url_components.hostname.lower() == "imgur.com":
+    else:
+            
+
+
+
+    
+
 
 
 def execute_from_command_line():
