@@ -71,6 +71,8 @@ def run_main():
     # test_pyload()
     # add_pyload_package_from_file()
     validate_imgur_links()
+    # link = "https://imgur.com/a/aWY6ljk"
+    # print(imgur.validate_imgur_url(link))
     # create_crawl_file()
     pass
 

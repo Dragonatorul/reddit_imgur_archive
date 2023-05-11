@@ -11,6 +11,8 @@ from tqdm import tqdm as tqdm_sync
 from tqdm.asyncio import tqdm as tqdm_async
 from apprise import Apprise, AppriseAsset, AppriseConfig, NotifyType, NotifyFormat
 from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeoutError
+from playwright.async_api import async_playwright, TimeoutError as PlaywrightAsyncTimeoutError
+import playwright
 
 
 from urllib.parse import urlparse
@@ -550,13 +552,88 @@ def create_crawlfile_from_text_file(file_name,
                                          recreate_file=recreate_file)
 
 
+async def validate_imgur_url_with_playwright(imgur_url):
+    # Use playwright to get the content of the imgur_url
+    # Initialize the playwright browser
+    # p = sync_playwright().start()
+    async with async_playwright() as p:
+        # Create a new browser context
+        # context = p.firefox.launch_persistent_context(persistentContextDirectory, headless=False, slow_mo=500)
+        browser = await p.firefox.launch(headless=True, slow_mo=500)
+        context = await browser.new_context()
+        # Create a new page
+        page = await context.new_page()
+        # Connect to the page
+        await page.goto(imgur_url)
+        # Wait for page to load
+        await page.wait_for_load_state()
+        # Get the page content
+        page_content = await page.content()
+        # Parse the content with beautifulsoup
+        soup = BeautifulSoup(page_content, 'html.parser')
+        button_elements = soup.find_all('div', class_='btn-wall--yes')
+        if len(button_elements) > 0:
+            await page.get_by_text("Yes, I'm over 18").click()
+            await page.wait_for_load_state()
+            page_content = await page.content()
+            soup = BeautifulSoup(page_content, 'html.parser')
+        await browser.close()
+        # Check if it contains the class .image-placeholder
+        image_elements = soup.find_all('img', class_='image-placeholder')
+        if len(image_elements) == 0:
+            # TODO: Check if it contains the class .post-image-container
+            return None
+        elif len(image_elements) == 1:
+            new_imgur_url = image_elements[0]['src']
+            return new_imgur_url
+        elif len(image_elements) > 1:
+            # TODO: Deal with multiple images
+            imgur_url_list = []
+            for element in image_elements:
+                imgur_url_list.append(element['src'])
+            return imgur_url_list
+        else:
+            return None
+
+        pass
+
+
+def validate_imgur_url_extensions(url_components):
+    extension = url_components.path.split('.')[-1]
+    if extension.lower() in ['jpg', 'jpeg', 'png', 'gif', 'gifv', 'mp4', 'webm', 'webp']:
+        # Get the imgur image id from the url
+        imgur_id = url_components.path.split('/')[-1].split('.')[0]
+        # Switch case based on the extension
+        match extension.lower():
+            case 'jpg' | 'jpeg' | 'webp':
+                return f"https://i.imgur.com/{imgur_id}.png"
+            case 'gif' | 'gifv' | 'webm':
+                return f"https://i.imgur.com/{imgur_id}.mp4"
+            case 'mp4' | 'png':
+                return f"https://i.imgur.com/{imgur_id}.{extension.lower()}"
+            case _:  # default
+                return None
+    else:
+        return None
+
+
+def validate_imgur_url_with_playwright_and_validate_extensions(imgur_url):
+    new_imgur_url = asyncio.run(validate_imgur_url_with_playwright(imgur_url))
+    if new_imgur_url is None:
+        return None
+    url_components = urlparse(new_imgur_url)
+    return validate_imgur_url_extensions(url_components)
+
+
 def validate_imgur_url(imgur_url):
     url_components = urlparse(imgur_url)
     headers = get_headers()
-    if url_components.hostname.lower() == 'imgur.com':
+    if url_components.hostname.lower() in ['imgur.com', 'www.imgur.com', 'i.imgur.com', 'm.imgur.com']:
+        if '.' in url_components.path:
+            # Get extension from the url
+            return validate_imgur_url_extensions(url_components)
         if '/gallery/' in url_components.path:
-            # TODO: Playwright call to validate gallery
-            return None
+            return validate_imgur_url_with_playwright_and_validate_extensions(imgur_url)
         r = requests.get(imgur_url + '/zip', allow_redirects=False, headers=headers)
         if r.status_code == 302 or r.status_code == 301:
             redirect_url = r.headers['Location']
@@ -575,10 +652,16 @@ def validate_imgur_url(imgur_url):
             r = requests.get(new_imgur_url, allow_redirects=False, headers=headers)
             if r.status_code == 200:
                 return new_imgur_url
+            elif r.status_code == 302 or r.status_code == 301:
+                if 'removed' in r.headers['Location'].lower():
+                    return None
+            elif r.status_code == 404:
+                return None
             else:
                 return None
         else:
-            raise Exception(f"ERROR: {r.status_code} - {imgur_url}")
+            return None
+            # raise Exception(f"ERROR: {r.status_code} - {imgur_url}")
                 
         # Use beautifulsoup to parse the html
         r = requests.get(imgur_url, headers=headers)
@@ -608,31 +691,33 @@ def validate_imgur_url(imgur_url):
                         r = requests.get(redirect_url, stream=True, allow_redirects=False, headers=headers)
                         if r.status_code == 403:
                             # There is no zip to download, so return a link for png based on the original url
-                            return f"https://i.imgur.com/{url_components.path.split('/')[-1]}.png"
+                            # return f"https://i.imgur.com/{url_components.path.split('/')[-1]}.png"
+                            return validate_imgur_url_with_playwright_and_validate_extensions(imgur_url)
+                        r.close()
                     if redirect_url_components.hostname.lower() == "zip.imgur.com":
                         return f"{imgur_url}/zip"
-                return None
+                r.close()
+                return validate_imgur_url_with_playwright_and_validate_extensions(imgur_url)
             else:
+                r.close()
                 return None
         
-    # Get extension from the url
-    extension = url_components.path.split('.')[-1]
-    if url_components.hostname.lower() == 'i.imgur.com' and extension.lower() in ['jpg', 'jpeg', 'png', 'gif', 'gifv', 'mp4', 'webm', 'webp']:
-        # Get the imgur image id from the url
-        imgur_id = url_components.path.split('/')[-1].split('.')[0]
-        # Switch case based on the extension
-        match extension.lower():
-            case 'jpg' | 'jpeg' | 'webp':
-                return f"https://i.imgur.com/{imgur_id}.png"
-            case 'gif' | 'gifv' | 'webm':
-                return f"https://i.imgur.com/{imgur_id}.mp4"
-            case 'mp4' | 'png':
-                return f"https://i.imgur.com/{imgur_id}.{extension.lower()}"
-    # Check if /gallery/ is in the url
-    elif '/gallery/' in url_components.path:
-        return None
-    # Check if /a/ is in the url
-
+    # # Get extension from the url
+    # extension = url_components.path.split('.')[-1]
+    # if url_components.hostname.lower() == 'i.imgur.com' and extension.lower() in ['jpg', 'jpeg', 'png', 'gif', 'gifv', 'mp4', 'webm', 'webp']:
+    #     # Get the imgur image id from the url
+    #     imgur_id = url_components.path.split('/')[-1].split('.')[0]
+    #     # Switch case based on the extension
+    #     match extension.lower():
+    #         case 'jpg' | 'jpeg' | 'webp':
+    #             return f"https://i.imgur.com/{imgur_id}.png"
+    #         case 'gif' | 'gifv' | 'webm':
+    #             return f"https://i.imgur.com/{imgur_id}.mp4"
+    #         case 'mp4' | 'png':
+    #             return f"https://i.imgur.com/{imgur_id}.{extension.lower()}"
+    # # Check if /gallery/ is in the url
+    # elif '/gallery/' in url_components.path:
+    #     return None
     return None
     # elif url_components.hostname.lower() == "imgur.com":
     #     pass

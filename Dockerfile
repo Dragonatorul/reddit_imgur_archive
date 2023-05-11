@@ -1,11 +1,14 @@
 FROM python:3.11-bullseye
 
 # Install bash
-RUN apt-get update && apt-get install -y bash
+RUN apt-get update && apt-get install -y bash gh
 
 COPY ./requirements.txt /app/requirements.txt
 WORKDIR /app
-RUN pip install --no-cache -r requirements.txt
+RUN pip install --no-cache -r requirements.txt && \
+    python -m playwright install && \
+    python -m playwright install-deps && \
+    echo eval '$(gh completion -s bash)' >> ~/.bashrc
 
 COPY ./src/*.py /app/
 
