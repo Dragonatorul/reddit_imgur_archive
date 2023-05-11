@@ -17,11 +17,13 @@ def create_crawl_file():
     url_source_folder = "/data/subreddit_links"
     url_source = url_source_folder + "/" + test_filename
 
-    imgur.create_crawlfile_from_text_file(
-        url_source,
-        output_folder="/data/imgur_links",
-        recreate_file=True
-    )
+    # create the crawl file for each file in folder url_source_folder
+    for filename in os.listdir(url_source_folder):
+        imgur.create_crawlfile_from_text_file(
+            file_name=url_source_folder + "/" + filename,
+            output_folder="./data/crawljobs",
+            recreate_file=True
+        )
     pass
 
 
@@ -58,13 +60,18 @@ def validate_imgur_links():
     # get the package name from the file name
     new_file_name = f"{os.path.basename(test_file_path).split('.')[0]}_validated.txt"
 
-    imgur.validate_imgur_urls(test_file_path, "./data/validated_links")
+    with open(test_file_path, "r") as f:
+        for line in f.readlines():
+            link = line.strip()
+            validated_link = imgur.validate_imgur_url(link)
+            print(f"{link} -> {validated_link}")
 
 
 def run_main():
     # test_pyload()
     # add_pyload_package_from_file()
     validate_imgur_links()
+    # create_crawl_file()
     pass
 
 

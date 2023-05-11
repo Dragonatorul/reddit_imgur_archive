@@ -10,6 +10,7 @@ import httpx
 from tqdm import tqdm as tqdm_sync
 from tqdm.asyncio import tqdm as tqdm_async
 from apprise import Apprise, AppriseAsset, AppriseConfig, NotifyType, NotifyFormat
+from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeoutError
 
 
 from urllib.parse import urlparse
@@ -165,6 +166,29 @@ def transform_imgur_url_for_download(imgur_url):
     return return_val
 
 
+def get_headers():
+    
+    if "USER_AGENT" in os.environ:
+        user_agent = os.environ["USER_AGENT"]
+    else:
+        user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/112.0.0.0 Safari/537.36"
+    headers = {
+        "User-Agent": user_agent,
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.5",
+        "Accept-Encoding": "gzip, deflate, br",
+        "Connection": "keep-alive",
+        "Upgrade-Insecure-Requests": "1",
+        "Sec-Fetch-Dest": "document",
+        "Sec-Fetch-Mode": "navigate",
+        "Sec-Fetch-Site": "none",
+        "Sec-Fetch-User": "?1",
+        "Sec-GPC": "1",
+        "TE": "trailers"
+    }
+    return headers
+
+
 def download_imgur_url(file_with_imgur_urls, output_folder, only_validate_urls=False):
     """
     Download a list of imgur urls from a file
@@ -246,24 +270,8 @@ def download_imgur_url(file_with_imgur_urls, output_folder, only_validate_urls=F
         :return: None
         """
 
-        if "USER_AGENT" in os.environ:
-            user_agent = os.environ["USER_AGENT"]
-        else:
-            user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/112.0.0.0 Safari/537.36"
-        headers = {
-            "User-Agent": user_agent,
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-            "Accept-Language": "en-US,en;q=0.5",
-            "Accept-Encoding": "gzip, deflate, br",
-            "Connection": "keep-alive",
-            "Upgrade-Insecure-Requests": "1",
-            "Sec-Fetch-Dest": "document",
-            "Sec-Fetch-Mode": "navigate",
-            "Sec-Fetch-Site": "none",
-            "Sec-Fetch-User": "?1",
-            "Sec-GPC": "1",
-            "TE": "trailers"
-        }
+        headers = get_headers()
+
         MAX_RECURSIVE_STEP = 10
         SLEEP_TIME = sleep if sleep is not None else 1
         if recursive_step >= MAX_RECURSIVE_STEP - 1:
@@ -360,16 +368,16 @@ def download_imgur_url(file_with_imgur_urls, output_folder, only_validate_urls=F
                      validated_urls_path=validated_urls_path))
 
 
-def validate_imgur_urls(file_with_imgur_urls, output_folder):
-    """
-    Validate the imgur urls from the file_with_imgur_urls
+# def validate_imgur_urls(file_with_imgur_urls, output_folder):
+#     """
+#     Validate the imgur urls from the file_with_imgur_urls
 
-    :param file_with_imgur_urls: The file containing the imgur urls
-    :return: None
-    """
-    download_imgur_url( file_with_imgur_urls,
-                        output_folder=output_folder,
-                        only_validate_urls=True)
+#     :param file_with_imgur_urls: The file containing the imgur urls
+#     :return: None
+#     """
+#     download_imgur_url( file_with_imgur_urls,
+#                         output_folder=output_folder,
+#                         only_validate_urls=True)
 
 def get_urls_from_folders(folder_path):
     """
@@ -544,65 +552,92 @@ def create_crawlfile_from_text_file(file_name,
 
 def validate_imgur_url(imgur_url):
     url_components = urlparse(imgur_url)
+    headers = get_headers()
     if url_components.hostname.lower() == 'imgur.com':
         if '/gallery/' in url_components.path:
+            # TODO: Playwright call to validate gallery
             return None
-        r = requests.get(imgur_url + '/zip', allow_redirects=False)
-        if r.status_code == 302:
+        r = requests.get(imgur_url + '/zip', allow_redirects=False, headers=headers)
+        if r.status_code == 302 or r.status_code == 301:
             redirect_url = r.headers['Location']
             # If the redirect url contains /download/ follow the redirect but don't download the file
             if '/download/' in redirect_url:
                 # Get the headers only
-                r = requests.get(redirect_url, stream=True, allow_redirects=False)
+                r = requests.get(redirect_url, stream=True, allow_redirects=False, headers=headers)
                 if r.status_code == 403:
                     r.close()
                     pass
                 else:
                     return f"{imgur_url}/zip" if '/zip' not in imgur_url else imgur_url
+        elif r.status_code == 404:
+            imgur_id = url_components.path.split('/')[-1]
+            new_imgur_url = f"https://i.imgur.com/{imgur_id}.png"
+            r = requests.get(new_imgur_url, allow_redirects=False, headers=headers)
+            if r.status_code == 200:
+                return new_imgur_url
+            else:
+                return None
+        else:
+            raise Exception(f"ERROR: {r.status_code} - {imgur_url}")
                 
         # Use beautifulsoup to parse the html
-        r = requests.get(imgur_url)
+        r = requests.get(imgur_url, headers=headers)
         soup = BeautifulSoup(r.text, 'html.parser')
+        r.close()
         # Find the image element in the html by finding the img element with class .image-placeholder
         image_element = soup.find('img', class_='image-placeholder')
         if image_element:
             imgur_url = image_element['src']
             url_components = urlparse(imgur_url)
-        r.close()
+        else:
+            new_imgur_url = f"https://i.imgur.com/{url_components.path.split('/')[-1]}.png"
+            r = requests.get(new_imgur_url, allow_redirects=False, headers=headers)
+            if r.status_code == 200:
+                return new_imgur_url
+            elif '/a/' in url_components.path:
+                # Issue a request to download the imgur album page with /zip appended to the url, but don't follow redirects
+                # Get the redirect url from the response
+                r = requests.get(imgur_url + '/zip', allow_redirects=False, headers=headers)
+                if r.status_code == 302 or r.status_code == 301:
+                    redirect_url = r.headers['Location']
+                    # Split redirect_url into components
+                    redirect_url_components = urlparse(redirect_url)
+                    # If the redirect url contains /download/ follow the redirect but don't download the file
+                    if '/download/' in redirect_url:
+                        # Get the headers only
+                        r = requests.get(redirect_url, stream=True, allow_redirects=False, headers=headers)
+                        if r.status_code == 403:
+                            # There is no zip to download, so return a link for png based on the original url
+                            return f"https://i.imgur.com/{url_components.path.split('/')[-1]}.png"
+                    if redirect_url_components.hostname.lower() == "zip.imgur.com":
+                        return f"{imgur_url}/zip"
+                return None
+            else:
+                return None
+        
     # Get extension from the url
     extension = url_components.path.split('.')[-1]
     if url_components.hostname.lower() == 'i.imgur.com' and extension.lower() in ['jpg', 'jpeg', 'png', 'gif', 'gifv', 'mp4', 'webm', 'webp']:
+        # Get the imgur image id from the url
+        imgur_id = url_components.path.split('/')[-1].split('.')[0]
         # Switch case based on the extension
         match extension.lower():
             case 'jpg' | 'jpeg' | 'webp':
-                return f"https://i.imgur.com/{url_components.path.split('/')[-1]}.png"
+                return f"https://i.imgur.com/{imgur_id}.png"
             case 'gif' | 'gifv' | 'webm':
-                return f"https://i.imgur.com/{url_components.path.split('/')[-1]}.mp4"
+                return f"https://i.imgur.com/{imgur_id}.mp4"
+            case 'mp4' | 'png':
+                return f"https://i.imgur.com/{imgur_id}.{extension.lower()}"
     # Check if /gallery/ is in the url
     elif '/gallery/' in url_components.path:
         return None
     # Check if /a/ is in the url
-    elif '/a/' in url_components.path:
-        # Issue a request to download the imgur album page with /zip appended to the url, but don't follow redirects
-        # Get the redirect url from the response
-        r = requests.get(imgur_url + '/zip', allow_redirects=False)
-        if r.status_code == 302:
-            redirect_url = r.headers['Location']
-            # If the redirect url contains /download/ follow the redirect but don't download the file
-            if '/download/' in redirect_url:
-                # Get the headers only
-                r = requests.get(redirect_url, stream=True, allow_redirects=False)
-                if r.status_code == 403:
-                    # There is no zip to download, so return a link for png based on the original url
-                    return f"https://i.imgur.com/{url_components.path.split('/')[-1]}.png"
-    elif url_components.hostname.lower() == "imgur.com":
-    else:
-            
 
-
-
-    
-
+    return None
+    # elif url_components.hostname.lower() == "imgur.com":
+    #     pass
+    # else:
+    #     pass
 
 
 def execute_from_command_line():
